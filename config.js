@@ -1,7 +1,7 @@
 // アプリの設定。LINE Developers でチャネルを作ったら liffId を書き換える。
 // liffId が空のときは、LINEなしで動くデモモードになる。
 window.APP_CONFIG = {
-  liffId: "",
+  liffId: "2012129944-BdpcjHUZ",
   appName: "まちスタンプ",
   goal: 5,
   reward: "ドリンク1杯無料",
