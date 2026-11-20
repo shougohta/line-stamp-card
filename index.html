@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>まちスタンプ</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app" class="app" aria-live="polite">
+  <p class="loading" id="loading">読み込んでいます</p>
+</main>
+
+<dialog id="picker" class="sheet">
+  <form method="dialog">
+    <h2>QRコードを選ぶ（デモ）</h2>
+    <p class="muted">デモモードではカメラの代わりに、読み取る店を選びます。</p>
+    <div id="picker-list" class="picker-list"></div>
+    <button value="cancel" class="btn ghost">やめる</button>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="config.js"></script>
+<script src="mock-liff.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
