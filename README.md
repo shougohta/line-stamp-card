@@ -27,6 +27,9 @@
 | 達成後の特典画面と使用済み処理 | なし（画面のみ） |
 | 起動環境の表示、閉じるボタン | `liff.getOS` / `getContext` / `isInClient` / `closeWindow` |
 | 公式アカウントから「スタンプカードを開く」ボタン付きメッセージを送る | Messaging API（`send-message.mjs`） |
+| IDトークンの取得状況を表示（sub、メールアドレスの有無、有効期限） | `liff.getIDToken` / `liff.getDecodedIDToken` / `liff.permission.query` |
+| メールアドレスの利用許可（説明画面 → LINEの許可画面） | `liff.permission.requestAll` / History APIでの画面切り替え（`?view=email`） |
+| IDトークンを手元で検証する | LINE Login API `POST /oauth2/v2.1/verify`（`verify-id-token.mjs`） |
 
 ## ファイル
 

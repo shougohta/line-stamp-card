@@ -2,6 +2,7 @@
 // config.js の liffId が空か、URLに ?mock=1 があるときだけ使う。
 window.createMockLiff = function (config) {
   var FRIEND_KEY = "stampcard:mock:friend";
+  var EMAIL_KEY = "stampcard:mock:email";
   function read(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
   function write(key, v) { try { localStorage.setItem(key, v); } catch (e) {} }
 
@@ -51,6 +52,16 @@ window.createMockLiff = function (config) {
       return Promise.resolve({ status: "success" });
     },
     permanentLink: { createUrlBy: function (url) { return Promise.resolve(url); } },
+    getIDToken: function () { return "mock.id.token"; },
+    getDecodedIDToken: function () {
+      var c = { iss: "https://access.line.me", sub: "Udemo0000000000000000000000000000", aud: "mock", exp: Math.floor(Date.now() / 1000) + 3600, name: "デモユーザー" };
+      if (read(EMAIL_KEY) === "1") c.email = "demo@example.com";
+      return c;
+    },
+    permission: {
+      query: function (p) { return Promise.resolve({ state: p === "email" && read(EMAIL_KEY) !== "1" ? "prompt" : "granted" }); },
+      requestAll: function () { write(EMAIL_KEY, "1"); return Promise.resolve(); }
+    },
     closeWindow: function () {}
   };
 };

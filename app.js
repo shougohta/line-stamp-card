@@ -5,6 +5,8 @@
   var L = MOCK ? window.createMockLiff(cfg) : window.liff;
   var app = document.getElementById("app");
   var profile, state, isFriend = null, justStamped = null, confirmUse = false;
+  var view = params.get("view") === "email" ? "email" : "card";
+  var tokenInfo = { raw: null, claims: null, emailPermission: "不明", error: null };
 
   // ---------- 保存 ----------
   // 試作のため、記録は端末内(localStorage)に保存する。本番ではサーバーでIDトークンを検証して保存する。
@@ -33,6 +35,7 @@
   }
 
   function render() {
+    if (view === "email") { renderEmail(); return; }
     var n = count(), goal = cfg.goal, html = "";
     if (MOCK) html += '<p class="demo">デモモードです。LINEにはつながず、端末内だけで動きます。</p>';
 
@@ -75,6 +78,8 @@
         (done ? '<span class="done">済み</span>' : '<span class="todo">未訪問</span>') + '</li>';
     }).join("") + '</ul></section>';
 
+    html += renderTokenPanel();
+
     var ctx = L.getContext() || {};
     html += '<p class="env">' + esc([L.getOS(), L.isInClient() ? "LINE内" : "外部ブラウザ", "LINE " + (L.getLineVersion() || "なし"), "起動元 " + (ctx.type || "不明")].join(" / ")) + '</p>';
     if (L.isInClient()) html += '<button class="btn ghost" id="close">閉じる</button>';
@@ -95,6 +100,119 @@
     });
     on("use-cancel", function () { confirmUse = false; render(); });
     on("close", function () { L.closeWindow(); });
+    on("open-email", function () { go("email"); });
+    on("token-copy", copyToken);
+    on("token-reload", function () { location.reload(); });
+    on("email-agree", requestEmail);
+    on("email-back", backToCard);
+  }
+
+  // ---------- 画面の切り替え（History APIでクエリを書き換える） ----------
+  function urlFor(v) {
+    var p = new URLSearchParams(location.search);
+    p.delete("store");
+    if (v === "card") p.delete("view"); else p.set("view", v);
+    var q = p.toString();
+    return location.pathname + (q ? "?" + q : "");
+  }
+  var pushed = 0; // アプリ内で積んだ履歴の数。0なら、戻ると前のアプリやトークへ出てしまう
+  function go(v) {
+    history.pushState({ view: v }, "", urlFor(v));
+    pushed++;
+    view = v; render(); window.scrollTo(0, 0);
+  }
+  function backToCard() {
+    if (pushed > 0) { history.back(); return; }
+    history.replaceState({ view: "card" }, "", urlFor("card"));
+    view = "card"; render();
+  }
+  window.addEventListener("popstate", function (e) {
+    if (pushed > 0) pushed--;
+    view = e.state && e.state.view === "email" ? "email" : (new URLSearchParams(location.search).get("view") === "email" ? "email" : "card");
+    render();
+  });
+
+  // ---------- IDトークン ----------
+  // 表示用に中身を読むだけ。本人の特定は、加工前のトークンをサーバーで検証して行う。
+  function readToken() {
+    tokenInfo.error = null;
+    try {
+      tokenInfo.raw = L.getIDToken();
+      tokenInfo.claims = L.getDecodedIDToken();
+    } catch (e) {
+      tokenInfo.error = e.code || e.message;
+    }
+    if (!L.permission || !L.permission.query) { tokenInfo.emailPermission = "確認不可"; return Promise.resolve(); }
+    return L.permission.query("email").then(function (r) {
+      tokenInfo.emailPermission = { granted: "許可済み", prompt: "未許可", unavailable: "スコープ未設定" }[r.state] || r.state;
+    }).catch(function (e) { tokenInfo.emailPermission = "確認失敗（" + (e.code || e.message) + "）"; });
+  }
+  function mask(s, keep) {
+    if (!s) return "";
+    return s.length <= keep * 2 ? s : s.slice(0, keep) + "…" + s.slice(-keep);
+  }
+  function maskEmail(m) {
+    var at = m.indexOf("@");
+    return at < 0 ? mask(m, 2) : m.slice(0, Math.min(2, at)) + "***" + m.slice(at);
+  }
+  function renderTokenPanel() {
+    var c = tokenInfo.claims, rows = [];
+    rows.push(["IDトークン", tokenInfo.raw ? "取得できた" : (tokenInfo.error ? "取得できない（" + tokenInfo.error + "）" : "取得できない")]);
+    if (c) {
+      rows.push(["ユーザーID（sub）", mask(c.sub, 4)]);
+      rows.push(["メールアドレス", c.email ? maskEmail(c.email) : "トークンに入っていない"]);
+      rows.push(["チャネルID（aud）", String(c.aud)]);
+      rows.push(["有効期限", new Date(c.exp * 1000).toLocaleTimeString("ja-JP")]);
+    }
+    rows.push(["メールアドレスの許可", tokenInfo.emailPermission]);
+    return '<section class="bonus"><h2>LINE連携の状態</h2><dl class="kv">' +
+      rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join("") + '</dl>' +
+      '<div class="actions"><button class="btn sub" id="open-email">メールアドレスの利用を許可する</button>' +
+      (tokenInfo.raw ? '<button class="btn ghost" id="token-copy">IDトークンをコピー（検証用）</button>' : "") +
+      '<button class="btn ghost" id="token-reload">再読み込みしてトークンを取り直す</button></div></section>';
+  }
+  function copyToken() {
+    if (!tokenInfo.raw) return;
+    try {
+      navigator.clipboard.writeText(tokenInfo.raw).then(function () { toast("コピーしました。有効期限は1時間です"); }, function () { toast("コピーできませんでした"); });
+    } catch (e) { toast("コピーできませんでした"); }
+  }
+
+  // ---------- メールアドレスの利用許可 ----------
+  function renderEmail() {
+    var html = "";
+    if (MOCK) html += '<p class="demo">デモモードです。LINEにはつながず、端末内だけで動きます。</p>';
+    html += '<header class="who"><div><h1>メールアドレスの取得と利用について</h1><p class="muted">' + esc(cfg.appName) + '</p></div></header>' +
+      '<section class="card consent">' +
+      '<p>' + esc(cfg.appName) + 'は、お客さまの同意を得たうえで、LINEに登録されているメールアドレスを取得します。</p>' +
+      '<dl class="kv">' +
+      '<dt>取得する情報</dt><dd>LINEに登録されているメールアドレス</dd>' +
+      '<dt>利用目的</dt><dd>会員情報との照合、特典やキャンペーンに関するご連絡</dd>' +
+      '<dt>第三者への提供</dt><dd>法令に基づく場合を除き、行いません</dd>' +
+      '<dt>保存期間</dt><dd>サービスの退会または同意の取り消しまで</dd>' +
+      '</dl>' +
+      '<p class="muted">同意しない場合も、スタンプカードはこれまでどおり利用できます。同意はいつでも取り消せます。</p>' +
+      '</section>' +
+      '<div class="actions"><button class="btn" id="email-agree">同意してLINEの許可画面へ進む</button>' +
+      '<button class="btn ghost" id="email-back">戻る</button></div>' +
+      '<p class="env">試作用の説明文です。本番では、提供元の会社名とプライバシーポリシーへのリンクを載せます。</p>';
+    app.innerHTML = html;
+    bind();
+  }
+  function requestEmail() {
+    if (!L.permission || !L.permission.requestAll) { toast("この環境では許可画面を出せません"); return; }
+    L.permission.requestAll().then(afterEmail).catch(function (e) {
+      var msg = String(e.message || "");
+      if (/already been approved/i.test(msg)) { afterEmail(); return; }
+      toast("許可画面を開けませんでした（" + (e.code || "") + " " + msg + "）");
+    });
+  }
+  function afterEmail() {
+    readToken().then(function () {
+      backToCard();
+      var c = tokenInfo.claims;
+      toast(c && c.email ? "メールアドレスを取得できました" : "許可を受け付けました。トークンにはまだ入っていません");
+    });
   }
 
   // ---------- スタンプ ----------
@@ -188,14 +306,12 @@
       return L.getProfile().then(function (p) {
         profile = p;
         state = load();
-        return checkFriend();
+        return Promise.all([checkFriend(), readToken()]);
       }).then(function () {
+        try { history.replaceState({ view: view }, "", urlFor(view)); } catch (e) {}
         render();
-        var storeParam = new URLSearchParams(location.search).get("store");
-        if (storeParam) {
-          stamp(storeParam);
-          try { history.replaceState(null, "", location.pathname + (MOCK && params.has("mock") ? "?mock=1" : "")); } catch (e) {}
-        }
+        var storeParam = params.get("store");
+        if (storeParam) stamp(storeParam);
       });
     })
     .catch(function (e) { fail("起動できませんでした（" + (e.code || e.message) + "）"); });
