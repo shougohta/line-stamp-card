@@ -14,7 +14,13 @@ const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const to = process.env.LINE_TO_USER_ID;
 const miniappUrl = process.env.MINIAPP_URL || "https://miniapp.line.me/2012129944-BdpcjHUZ";
 
-const message = {
+// MESSAGE_FILE にJSONファイルを指定すると、そのメッセージを送る（文中の {{MINIAPP_URL}} はミニアプリのURLに置き換える）
+const fs = await import("node:fs");
+const custom = process.env.MESSAGE_FILE
+  ? JSON.parse(fs.readFileSync(process.env.MESSAGE_FILE, "utf8").replaceAll("{{MINIAPP_URL}}", miniappUrl))
+  : null;
+
+const message = custom || {
   type: "flex",
   altText: "まちスタンプ：お店を回ってスタンプを集めよう",
   contents: {
