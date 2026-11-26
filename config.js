@@ -15,3 +15,17 @@ window.APP_CONFIG = {
     { id: "s06", name: "古本 ひだまり", area: "川沿い" }
   ]
 };
+
+// 本番用のミニアプリURL（https://miniapp.line.me/{本番用LIFF ID}?env=prod）から開いたときは、本番用のLIFF IDで初期化する。
+// LIFF IDは開発用・本番用で違う。初回はLINEが ?liff.state=%3Fenv%3Dprod のように包んで渡すので、その中も見る。
+(function () {
+  var LIFF_IDS = { dev: "2012129944-BdpcjHUZ", prod: "2012129946-cljXwAwh" };
+  var q = location.search;
+  try {
+    var st = new URLSearchParams(q).get("liff.state");
+    if (st) q += "&" + st.replace(/^[^?]*\?/, "");
+  } catch (e) {}
+  var env = /(?:^|[?&])env=prod(?:&|$)/.test(q) ? "prod" : "dev";
+  window.APP_CONFIG.env = env;
+  window.APP_CONFIG.liffId = LIFF_IDS[env];
+})();
